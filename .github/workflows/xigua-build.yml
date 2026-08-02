@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to publish the IPA under (e.g. v3.8.0-xigua.1)"
+        description: "Release tag, one patch ahead of the upstream base (e.g. v3.8.4-xigua.1 for a fork of 3.8.3)"
         required: true
       prerelease:
         description: "Mark the release as a pre-release"
@@ -34,6 +34,27 @@ jobs:
 
       - name: Install ldid
         run: brew install ldid
+
+      # 版本号写死在 Info.plist 里(项目没有走 MARKETING_VERSION),不盖的话
+      # 每次发布都报上游那个号,西瓜IPA助手就永远看不到我们自己的更新。
+      #
+      # 号要比上游基线**高一个 patch**:助手先比 major.minor.patch,相等时
+      # 预发布号一律输给正式号(SemVer 规矩)。所以基于上游 3.8.3 的分支必须
+      # 报 3.8.4-xigua.N —— 字面意思就是「3.8.3 之后、3.8.4 之前的一版」,
+      # 既是实情,也保证 3.8.4-xigua.2 > 3.8.4-xigua.1 一路递增。
+      # 等上游真出了 3.8.4,我们跟进后从 3.8.5-xigua.1 起。
+      - name: Stamp version from tag
+        run: |
+          VERSION="${{ inputs.tag }}"
+          VERSION="${VERSION#v}"
+          if ! printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+-xigua\.[0-9]+$'; then
+            echo "::error::tag 要形如 v3.8.4-xigua.1,收到的是 ${{ inputs.tag }}"
+            exit 1
+          fi
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Resources/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION"            Resources/Info.plist
+          echo "STAMPED_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "版本号盖为 $VERSION"
 
       - name: Archive (unsigned)
         run: |
@@ -77,10 +98,15 @@ jobs:
           APP=Payload/LiveContainer.app
           BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist")
           NAME=$(/usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$APP/Info.plist")
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Info.plist")
           echo "bundle id: $BUNDLE_ID"
           echo "display name: $NAME"
+          echo "version: $VERSION"
           [ "$BUNDLE_ID" = "com.kdt.livecontainer" ] || { echo "::error::bundle id changed"; exit 1; }
           [ "$NAME" = "西瓜多开" ] || { echo "::error::display name is not 西瓜多开"; exit 1; }
+          # 打包用的是归档产物,不是源码树 —— 确认盖的号真的进了包里。
+          [ "$VERSION" = "$STAMPED_VERSION" ] \
+            || { echo "::error::包里的版本是 $VERSION,应为 $STAMPED_VERSION"; exit 1; }
           # ldid, not codesign: codesign can't read back an ldid-written blob.
           ldid -e "$APP/LiveContainer" 2>/dev/null | grep -q "keychain-access-groups" \
             || { echo "::error::entitlements missing — fakesign step did not take"; exit 1; }
