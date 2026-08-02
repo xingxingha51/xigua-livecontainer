@@ -30,20 +30,11 @@ struct LCTabView: View {
         LCAppListView(searchContext: searchContextAppList)
     }
     
-    private var sourcesView: LCSourcesView {
-        LCSourcesView(searchContext: searchContextSource)
-    }
-
     
     var body: some View {
         Group {
             if #available(iOS 19.0, *), SharedModel.isLiquidGlassSearchEnabled {
                 TabView(selection: $sharedModel.selectedTab) {
-                    if DataManager.shared.model.multiLCStatus != 2 {
-                        Tab("lc.tabView.sources".loc, systemImage: "books.vertical", value: LCTabIdentifier.sources) {
-                            sourcesView
-                        }
-                    }
                     Tab("lc.tabView.apps".loc, systemImage: "square.stack.3d.up.fill", value: LCTabIdentifier.apps) {
                         appListView
                     }
@@ -56,25 +47,12 @@ struct LCTabView: View {
                         LCSettingsView()
                     }
                     Tab("Search".loc, systemImage: "magnifyingglass", value: LCTabIdentifier.search, role: .search) {
-                        if previousSelectedTab == .sources {
-                            sourcesView
-                                .searchable(text: $searchContextSource.query)
-                        } else {
-                            appListView
-                                .searchable(text: $searchContextAppList.query)
-                        }
-
+                        appListView
+                            .searchable(text: $searchContextAppList.query)
                     }
                 }
             } else {
                 TabView(selection: $sharedModel.selectedTab) {
-                    if DataManager.shared.model.multiLCStatus != 2 {
-                        sourcesView
-                            .tabItem {
-                                Label("lc.tabView.sources".loc, systemImage: "books.vertical")
-                            }
-                            .tag(LCTabIdentifier.sources)
-                    }
                     appListView
                         .tabItem {
                             Label("lc.tabView.apps".loc, systemImage: "square.stack.3d.up.fill")
@@ -178,8 +156,11 @@ struct LCTabView: View {
                 sharedModel.selectedTab = .apps
             case "certificate":
                 sharedModel.selectedTab = .settings
+            // The Sources tab is gone — app browsing lives in 西瓜IPA助手, which
+            // is where an "add source" link should be handled anyway. Ignore it
+            // rather than switching to a tab that no longer exists.
             case "source":
-                sharedModel.selectedTab = .sources
+                return
             default:
                 return
             }
