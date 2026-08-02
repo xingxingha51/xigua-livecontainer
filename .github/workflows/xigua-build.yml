@@ -56,6 +56,42 @@ jobs:
           echo "STAMPED_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "版本号盖为 $VERSION"
 
+      # entitlements 里的 app group 写的是 Xcode 构建变量
+      # $(APP_GROUP_SIDESTORE) / $(APP_GROUP_ALTSTORE)。正常签名时 Xcode 会
+      # 展开它们,ldid 不会——它把字面量原样写进二进制。
+      #
+      # 后果不是签名失败,而是西瓜IPA助手**续签时**失败:它拿应用声明的
+      # app group 去 addApplicationGroup.action 注册(还会补上 .<TEAMID>),
+      # 苹果对 "$(APP_GROUP_SIDESTORE).TEAMID" 返回 resultCode 35,助手翻译成
+      # "The provided app group is invalid."。安装能过是因为电脑端助手用的是
+      # 描述文件里的 entitlements,压根不碰这一步。
+      #
+      # Release 下 DEVELOPMENT_TEAM_SUFFIX 是空的,所以展开成下面两个值——
+      # 也正是 LCSharedUtils.appGroupID 运行时要找的那两个(它在后面接
+      # .<TEAMID>,和商店注册时补的后缀正好对上)。
+      - name: Expand app group variables
+        run: |
+          SIDESTORE="group.com.SideStore.SideStore"
+          ALTSTORE="group.com.rileytestut.AltStore"
+
+          # 上游哪天改了基名,在这里炸,而不是等用户续签失败才发现
+          grep -qF "APP_GROUP_SIDESTORE = $SIDESTORE\$(DEVELOPMENT_TEAM_SUFFIX)" xcconfigs/Global.xcconfig \
+            || { echo "::error::Global.xcconfig 里的 APP_GROUP_SIDESTORE 变了"; exit 1; }
+          grep -qF "APP_GROUP_ALTSTORE = $ALTSTORE\$(DEVELOPMENT_TEAM_SUFFIX)" xcconfigs/Global.xcconfig \
+            || { echo "::error::Global.xcconfig 里的 APP_GROUP_ALTSTORE 变了"; exit 1; }
+
+          for f in entitlements.xml \
+                   LaunchAppExtension/LaunchAppExtension.entitlements \
+                   LiveProcess/LiveProcess.entitlements \
+                   ShareExtension/ShareExtension.entitlements; do
+            sed -i '' -e "s|\$(APP_GROUP_SIDESTORE)|$SIDESTORE|g" \
+                      -e "s|\$(APP_GROUP_ALTSTORE)|$ALTSTORE|g" "$f"
+            if grep -q 'APP_GROUP_' "$f"; then
+              echo "::error::$f 里还有没展开的 app group 变量"; exit 1
+            fi
+            echo "展开: $f"
+          done
+
       - name: Archive (unsigned)
         run: |
           xcodebuild archive \
@@ -108,8 +144,17 @@ jobs:
           [ "$VERSION" = "$STAMPED_VERSION" ] \
             || { echo "::error::包里的版本是 $VERSION,应为 $STAMPED_VERSION"; exit 1; }
           # ldid, not codesign: codesign can't read back an ldid-written blob.
-          ldid -e "$APP/LiveContainer" 2>/dev/null | grep -q "keychain-access-groups" \
+          ENTS=$(ldid -e "$APP/LiveContainer" 2>/dev/null)
+          printf '%s' "$ENTS" | grep -q "keychain-access-groups" \
             || { echo "::error::entitlements missing — fakesign step did not take"; exit 1; }
+          # 没展开的 app group 会让助手续签时报 "The provided app group is
+          # invalid."(苹果 resultCode 35),而安装那一步照样成功——所以只能
+          # 在这里拦,不然要等到用户点更新才暴露。
+          if printf '%s' "$ENTS" | grep -q 'APP_GROUP_'; then
+            echo "::error::包里还有没展开的 app group 变量"; exit 1
+          fi
+          printf '%s' "$ENTS" | grep -q "group.com.SideStore.SideStore" \
+            || { echo "::error::包里没有 group.com.SideStore.SideStore"; exit 1; }
           echo "OK"
 
       - name: Publish to release
