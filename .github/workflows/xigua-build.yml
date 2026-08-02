@@ -1,0 +1,109 @@
+name: Build IPA
+
+# On demand only. An Xcode archive of this project is a ~20 minute job.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish the IPA under (e.g. v3.8.0-xigua.1)"
+        required: true
+      prerelease:
+        description: "Mark the release as a pre-release"
+        type: boolean
+        default: false
+
+concurrency:
+  group: ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-26
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1.6.0
+        with:
+          xcode-version: "26.4"
+
+      - name: Install ldid
+        run: brew install ldid
+
+      - name: Archive (unsigned)
+        run: |
+          xcodebuild archive \
+            -project LiveContainer.xcodeproj \
+            -scheme LiveContainer \
+            -archivePath ./XiguaLC \
+            -configuration Release \
+            -sdk iphoneos -arch arm64 \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+
+      # CODE_SIGNING_ALLOWED=NO also drops the entitlements, and the store's
+      # signer only keeps entitlements the app already declares (AltSign filters
+      # the profile's set against the app's). Ship them unsigned-but-present via
+      # ldid or the installed app loses its keychain groups and app group — the
+      # "import certificate" step then silently does nothing.
+      - name: Fakesign with entitlements
+        run: |
+          APP=XiguaLC.xcarchive/Products/Applications/LiveContainer.app
+          ldid -S"entitlements.xml" "$APP/LiveContainer"
+          ldid -S"LaunchAppExtension/LaunchAppExtension.entitlements" "$APP/PlugIns/LaunchAppExtension.appex/LaunchAppExtension"
+          ldid -S"LiveProcess/LiveProcess.entitlements"               "$APP/PlugIns/LiveProcess.appex/LiveProcess"
+          ldid -S"ShareExtension/ShareExtension.entitlements"         "$APP/PlugIns/ShareExtension.appex/ShareExtension"
+
+      # Mirrors upstream's build_github.sh: SideStore.framework is only part of
+      # the combined LiveContainer+SideStore build, which we don't ship — our
+      # store installs this app itself.
+      - name: Package IPA
+        run: |
+          mv XiguaLC.xcarchive/Products/Applications Payload
+          rm -rf Payload/LiveContainer.app/Frameworks/SideStore.framework
+          zip -qr XiguaLiveContainer.ipa Payload -x "._*" -x ".DS_Store" -x "__MACOSX"
+          ls -lh XiguaLiveContainer.ipa
+
+      # A bundle identifier change would break the desktop helper's
+      # LiveContainer special-case (it keys on this exact string to inject the
+      # com.kdt.livecontainer.shared keychain groups), so fail loudly if a merge
+      # from upstream ever moves it.
+      - name: Verify identity
+        run: |
+          APP=Payload/LiveContainer.app
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist")
+          NAME=$(/usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$APP/Info.plist")
+          echo "bundle id: $BUNDLE_ID"
+          echo "display name: $NAME"
+          [ "$BUNDLE_ID" = "com.kdt.livecontainer" ] || { echo "::error::bundle id changed"; exit 1; }
+          [ "$NAME" = "西瓜多开" ] || { echo "::error::display name is not 西瓜多开"; exit 1; }
+          # ldid, not codesign: codesign can't read back an ldid-written blob.
+          ldid -e "$APP/LiveContainer" 2>/dev/null | grep -q "keychain-access-groups" \
+            || { echo "::error::entitlements missing — fakesign step did not take"; exit 1; }
+          echo "OK"
+
+      - name: Publish to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ inputs.tag }}"
+          FLAGS=""
+          if [ "${{ inputs.prerelease }}" = "true" ]; then FLAGS="--prerelease"; fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" XiguaLiveContainer.ipa --clobber
+          else
+            gh release create "$TAG" XiguaLiveContainer.ipa \
+              --title "西瓜多开 $TAG" \
+              --notes "未签名的 ad-hoc 包，需用侧载工具以你自己的 Apple ID 签名后安装。" \
+              $FLAGS
+          fi
+
+          SIZE=$(stat -f%z XiguaLiveContainer.ipa)
+          echo "### 已发布 \`$TAG\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`size\`: **$SIZE** — 更新 apps.json 时要用这个值。" >> $GITHUB_STEP_SUMMARY
