@@ -38,6 +38,11 @@ struct LCTabView: View {
                     Tab("lc.tabView.apps".loc, systemImage: "square.stack.3d.up.fill", value: LCTabIdentifier.apps) {
                         appListView
                     }
+                    // 复用 .sources 这个 tag:上游的枚举里它已经存在,加一个新
+                    // case 只会让每次合并都要处理。
+                    Tab("lc.tabView.library".loc, systemImage: "square.grid.2x2.fill", value: LCTabIdentifier.sources) {
+                        LCXiguaLibraryView()
+                    }
                     if DataManager.shared.model.multiLCStatus != 2 {
                         Tab("lc.tabView.tweaks".loc, systemImage: "wrench.and.screwdriver", value: LCTabIdentifier.tweaks) {
                             LCTweaksView()
@@ -58,6 +63,11 @@ struct LCTabView: View {
                             Label("lc.tabView.apps".loc, systemImage: "square.stack.3d.up.fill")
                         }
                         .tag(LCTabIdentifier.apps)
+                    LCXiguaLibraryView()
+                        .tabItem {
+                            Label("lc.tabView.library".loc, systemImage: "square.grid.2x2.fill")
+                        }
+                        .tag(LCTabIdentifier.sources)
                     if DataManager.shared.model.multiLCStatus != 2 {
                         LCTweaksView()
                             .tabItem{
@@ -156,9 +166,8 @@ struct LCTabView: View {
                 sharedModel.selectedTab = .apps
             case "certificate":
                 sharedModel.selectedTab = .settings
-            // The Sources tab is gone — app browsing lives in 西瓜IPA助手, which
-            // is where an "add source" link should be handled anyway. Ignore it
-            // rather than switching to a tab that no longer exists.
+            // 「发现」页是我们自己维护的一份固定清单,不接受外部源。想加源的
+            // 链接归西瓜IPA助手处理,这里直接忽略。
             case "source":
                 return
             default:
