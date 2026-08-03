@@ -256,10 +256,17 @@ static NSString* invokeAppMain(NSString *selectedApp, NSString *selectedContaine
     if([[lcUserDefaults objectForKey:@"LCWaitForDebugger"] boolValue]) {
         sleep(100);
     }
+    // 走到这里说明还没导入证书。这是用户最常撞到的一条:证书那步跳过了,
+    // 点开容器里的应用就报错。
+    //
+    // 这个文件里一处 NSLocalizedString 都没有——它跑在 guest app 的进程上下文
+    // 里,本地化查找不可靠,上游因此全部硬编码。所以这里也直接写中文,而不是
+    // 加键去查表。原文是英文的,还提着 LiveContainer 和 SideStore 两个名字,
+    // 用户手机上根本没有叫这个的东西。
     if (!LCSharedUtils.certificatePassword && !isSideStore) {
 #if !TARGET_OS_SIMULATOR
         if(@available(iOS 26.0 ,*))  {
-            return @"JITLess mode is required since iOS 26. Please set it up in settings. \nPlease go to LiveContainer settings -> tap \"Import Certificate from SideStore\" / \"Import Certificate\"";
+            return @"还没有导入证书。\n\niOS 26 起必须先配置免JIT模式才能打开容器里的应用。\n\n请到西瓜多开的「设置」,在「免JIT模式」那一区点「从西瓜IPA助手导入证书」。";
         }
 #endif
         // First of all, let's check if we have JIT
@@ -267,7 +274,7 @@ static NSString* invokeAppMain(NSString *selectedApp, NSString *selectedContaine
             usleep(1000*100);
         }
         if (!checkJITEnabled()) {
-            appError = @"JIT was not enabled. If you want to use LiveContainer without JIT, setup JITLess mode in settings.";
+            appError = @"还没有导入证书,也没有可用的 JIT。\n\n请到西瓜多开的「设置」,在「免JIT模式」那一区点「从西瓜IPA助手导入证书」。导入之后就不需要 JIT 了。";
             return appError;
         }
     }
