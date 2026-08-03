@@ -160,7 +160,11 @@ extension LCUtils {
         case .AltStore:
             return "AltStore"
         case .SideStore:
-            return "SideStore"
+            // 这个分支是按 app group 里含 "SideStore" 判出来的,而我们沿用了上游
+            // 的 app group,所以西瓜IPA助手装出来的就落在这里。照搬上游的名字会
+            // 让人对不上号 —— 用户手机上根本没有叫 SideStore 的东西,却被告知
+            // 「从 SideStore 导入证书」。
+            return "西瓜IPA助手"
         case .ADP:
             return "ADP"
         default:

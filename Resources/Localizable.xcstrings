@@ -22569,7 +22569,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "To use JITLess mode without AltStore/SideStore, you have to import the certificate used to sign LiveContainer. Continue?"
+            "value": "This imports a certificate file (.p12) by hand, for people who already have one.\n\nIf you installed through the store, use \"Import Certificate from …\" below instead — it picks the certificate up automatically.\n\nPick a file anyway?"
           }
         },
         "es": {
@@ -22641,13 +22641,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "要不通过SideStore/AltStore使用免JIT模式，你需要导入用于签名西瓜多开的证书。要继续吗？"
+            "value": "这一项是手动导入证书文件(.p12),给自己有证书的人用。\n\n如果你是用西瓜IPA助手装的,不要用这个 —— 用下面那条「从西瓜IPA助手导入证书」,它会自动取,不用选文件。\n\n确定要手动选文件吗?"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "若不透過SideStore/AltStore使用免JIT模式，你需要匯入用於簽署LiveContainer的證書。要繼續嗎？"
+            "value": "這一項是手動匯入憑證檔案(.p12),給自己有憑證的人用。\n\n如果你是用西瓜IPA助手裝的,不要用這個 —— 用下面那條「從西瓜IPA助手匯入憑證」,它會自動取,不用選檔案。\n\n確定要手動選檔案嗎?"
           }
         }
       }
@@ -28285,13 +28285,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "安装方式不受支持。请使用SideStore或AltStore安装来使用此功能。"
+            "value": "当前的安装方式不支持这个功能。请用西瓜IPA助手安装后再试。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "安裝方式不受支援。請使用SideStore或AltStore安裝來使用此功能。"
+            "value": "目前的安裝方式不支援這個功能。請用西瓜IPA助手安裝後再試。"
           }
         }
       }
