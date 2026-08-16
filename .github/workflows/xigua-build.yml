@@ -51,8 +51,13 @@ jobs:
             echo "::error::tag 要形如 v3.8.4-xigua.1,收到的是 ${{ inputs.tag }}"
             exit 1
           fi
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Resources/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION"            Resources/Info.plist
+          # 路径跟着上游走过一次:2026-08 从 Resources/ 挪到了 LiveContainer/。
+          # PlistBuddy 对不存在的文件会「Will Create」一个空的然后照样退 0,
+          # 不会报错,所以这里先确认文件在,不然版本号会静悄悄没盖上。
+          PLIST=LiveContainer/Info.plist
+          [ -f "$PLIST" ] || { echo "::error::$PLIST 不存在,上游可能又挪了位置"; exit 1; }
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION"            "$PLIST"
           echo "STAMPED_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "版本号盖为 $VERSION"
 
@@ -121,7 +126,16 @@ jobs:
       - name: Package IPA
         run: |
           mv XiguaLC.xcarchive/Products/Applications Payload
+          # 上游 2026-08 把 SideStore target 改名成 SideStoreSupport,产物名跟着变。
+          # 两个名字都删:合并回更早的上游时老名字还在。删完再确认一遍——漏删
+          # 会把整个 SideStore 打进包里,而这只有等用户装完才看得出来。
           rm -rf Payload/LiveContainer.app/Frameworks/SideStore.framework
+          rm -rf Payload/LiveContainer.app/Frameworks/SideStoreSupport.framework
+          if ls -d Payload/LiveContainer.app/Frameworks/SideStore*.framework >/dev/null 2>&1; then
+            echo "::error::还有 SideStore 相关的 framework 没删掉:"
+            ls -d Payload/LiveContainer.app/Frameworks/SideStore*.framework
+            exit 1
+          fi
           zip -qr XiguaLiveContainer.ipa Payload -x "._*" -x ".DS_Store" -x "__MACOSX"
           ls -lh XiguaLiveContainer.ipa
 

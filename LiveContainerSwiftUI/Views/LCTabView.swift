@@ -13,76 +13,44 @@ struct LCTabView: View {
     @State var crashReportShow = false
     @State var errorInfo = ""
     
-    @State var previousSelectedTab : LCTabIdentifier = .apps
-    
     @EnvironmentObject var sharedModel : SharedModel
     @EnvironmentObject var sceneDelegate: SceneDelegate
     @State var shouldToggleMainWindowOpen = false
     @Environment(\.scenePhase) var scenePhase
     @StateObject var downloadHelper = DownloadHelper()
-    
-    @StateObject var searchContextAppList = SearchContext()
-    @StateObject var searchContextSource = SearchContext()
-    
+
     let pub = NotificationCenter.default.publisher(for: UIScene.didDisconnectNotification)
     
-    private var appListView: LCAppListView {
-        LCAppListView(searchContext: searchContextAppList)
-    }
-    
-    
     var body: some View {
-        Group {
-            if #available(iOS 19.0, *), SharedModel.isLiquidGlassSearchEnabled {
-                TabView(selection: $sharedModel.selectedTab) {
-                    Tab("lc.tabView.apps".loc, systemImage: "square.stack.3d.up.fill", value: LCTabIdentifier.apps) {
-                        appListView
+        TabView(selection: $sharedModel.selectedTab) {
+            // 上游这里是可以自由增删软件源的浏览器,和西瓜IPA助手完全重复,
+            // 换成我们自己维护的一份固定清单。复用 .sources 这个 tag:枚举里
+            // 它本来就在,加新 case 只会让以后每次合并都要处理它。
+            if DataManager.shared.model.multiLCStatus != 2 {
+                LCXiguaLibraryView()
+                    .tabItem {
+                        Label("lc.tabView.library".loc, systemImage: "square.grid.2x2.fill")
                     }
-                    // 复用 .sources 这个 tag:上游的枚举里它已经存在,加一个新
-                    // case 只会让每次合并都要处理。
-                    Tab("lc.tabView.library".loc, systemImage: "square.grid.2x2.fill", value: LCTabIdentifier.sources) {
-                        LCXiguaLibraryView()
-                    }
-                    if DataManager.shared.model.multiLCStatus != 2 {
-                        Tab("lc.tabView.tweaks".loc, systemImage: "wrench.and.screwdriver", value: LCTabIdentifier.tweaks) {
-                            LCTweaksView()
-                        }
-                    }
-                    Tab("lc.tabView.settings".loc, systemImage: "gearshape.fill", value: LCTabIdentifier.settings) {
-                        LCSettingsView()
-                    }
-                    Tab("Search".loc, systemImage: "magnifyingglass", value: LCTabIdentifier.search, role: .search) {
-                        appListView
-                            .searchable(text: $searchContextAppList.query)
-                    }
-                }
-            } else {
-                TabView(selection: $sharedModel.selectedTab) {
-                    appListView
-                        .tabItem {
-                            Label("lc.tabView.apps".loc, systemImage: "square.stack.3d.up.fill")
-                        }
-                        .tag(LCTabIdentifier.apps)
-                    LCXiguaLibraryView()
-                        .tabItem {
-                            Label("lc.tabView.library".loc, systemImage: "square.grid.2x2.fill")
-                        }
-                        .tag(LCTabIdentifier.sources)
-                    if DataManager.shared.model.multiLCStatus != 2 {
-                        LCTweaksView()
-                            .tabItem{
-                                Label("lc.tabView.tweaks".loc, systemImage: "wrench.and.screwdriver")
-                            }
-                            .tag(LCTabIdentifier.tweaks)
-                    }
-                    
-                    LCSettingsView()
-                        .tabItem {
-                            Label("lc.tabView.settings".loc, systemImage: "gearshape.fill")
-                        }
-                        .tag(LCTabIdentifier.settings)
-                }
+                    .tag(LCTabIdentifier.sources)
             }
+            LCAppListView()
+                .tabItem {
+                    Label("lc.tabView.apps".loc, systemImage: "square.stack.3d.up.fill")
+                }
+                .tag(LCTabIdentifier.apps)
+            if DataManager.shared.model.multiLCStatus != 2 {
+                LCTweaksView()
+                    .tabItem{
+                        Label("lc.tabView.tweaks".loc, systemImage: "wrench.and.screwdriver")
+                    }
+                    .tag(LCTabIdentifier.tweaks)
+            }
+            
+            LCSettingsView()
+                .tabItem {
+                    Label("lc.tabView.settings".loc, systemImage: "gearshape.fill")
+                }
+                .tag(LCTabIdentifier.settings)
         }
         .downloadAlert(helper: downloadHelper)
         .environmentObject(downloadHelper)
@@ -134,11 +102,6 @@ struct LCTabView: View {
                 if shouldToggleMainWindowOpen {
                     DataManager.shared.model.mainWindowOpened = false
                 }
-            }
-        }
-        .onChange(of: sharedModel.selectedTab) { newValue in
-            if newValue != LCTabIdentifier.search {
-                previousSelectedTab = newValue
             }
         }
         .onOpenURL { url in
