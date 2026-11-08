@@ -184,7 +184,7 @@ bool hook_dyld_program_sdk_at_least(void* dyldApiInstancePtr, dyld_build_version
     // we are targeting ios, so we hard code 2
     if(version.platform == 0xffffffff){
         return version.version <= guestAppSdkVersionSet;
-    } else if (version.platform == 2){
+    } else if (version.platform != 1){
         return version.version <= guestAppSdkVersion;
     } else {
         return false;
@@ -279,16 +279,15 @@ bool initGuestSDKVersionInfo(void) {
     if(!versionMapPtr || versionMapPtr[0] != 0x07db0901) {
 #if !TARGET_OS_SIMULATOR
         const char* dyldPath = "/usr/lib/dyld";
+#else
+        const char* dyldPath = "/usr/lib/dyld_sim";
+#endif
         uint64_t offset = 0;
         if(@available(iOS 27.0, *)) {
             offset = LCFindSymbolOffset(dyldPath, "__ZN5dyld311sVersionMapE");
         } else {
             offset = LCFindSymbolOffset(dyldPath, "__ZN5dyld3L11sVersionMapE");
         }
-#else
-        void *result = litehook_find_symbol(dyldBase, "__ZN5dyld3L11sVersionMapE");
-        uint64_t offset = (uint64_t)result - (uint64_t)dyldBase;
-#endif
         assert(offset);
         versionMapPtr = dyldBase + offset;
         saveCachedSymbol(@"__ZN5dyld3L11sVersionMapE", dyldBase, offset);
@@ -624,7 +623,7 @@ void* jitless_hook_mmap(void *addr, size_t len, int prot, int flags, int fd, off
     char filePath[PATH_MAX];
     if (fcntl(fd, F_GETPATH, filePath) != 0) return map;
     char newTmpPath[PATH_MAX];
-    sprintf(newTmpPath, "%s/Documents/%p.dylib", getenv("LP_HOME_PATH"), addr);
+    sprintf(newTmpPath, "%s/Documents/.fd%d.dylib", getenv("LP_HOME_PATH"), fd);
     rename(filePath, newTmpPath);
     map = __mmap(addr, len, prot, flags, fd, offset);
     rename(newTmpPath, filePath);
@@ -665,41 +664,32 @@ void bypass_seg_count_check(void (^block)(void)) {
     }
 }
 
-
-static void* hasInternalContent = 0;
-
-bool hook_os_variant_has_internal_content(const char* subsystem) {
-     return true;
-}
-
 void bypass_os_variant_has_internal_content(void (^block)(void)) {
-    hasInternalContent = dlsym(RTLD_DEFAULT, "os_variant_has_internal_content");
-    arm_debug_state64_t origHasInternalContentDebugState = {0};
-    exception_mask_t hasInternalContentMask = EXC_MASK_BREAKPOINT;
-    mach_msg_type_number_t hasInternalContentMasksCnt = 1;
-    exception_handler_t hasInternalContentHandler = excPort;
-    exception_behavior_t hasInternalContentBehavior = EXCEPTION_STATE | MACH_EXCEPTION_CODES;
-    thread_state_flavor_t hasInternalContentFlavor = ARM_THREAD_STATE64;
-    mach_port_t thread = mach_thread_self();
-    if(hasInternalContent) {
-        ensureBreakpointExceptionHandler();
-        hasInternalContentHandler = excPort;
-        thread_get_state(thread, ARM_DEBUG_STATE64, (thread_state_t)&origHasInternalContentDebugState, &(mach_msg_type_number_t){ARM_DEBUG_STATE64_COUNT});
-        thread_swap_exception_ports(thread, hasInternalContentMask, hasInternalContentHandler, hasInternalContentBehavior, hasInternalContentFlavor, &hasInternalContentMask, &hasInternalContentMasksCnt, &hasInternalContentHandler, &hasInternalContentBehavior, &hasInternalContentFlavor);
-        assert(hasInternalContentMasksCnt == 1);
-
-        arm_debug_state64_t hookDebugState = origHasInternalContentDebugState;
-        hookDebugState.__bvr[1] = (uint64_t)hasInternalContent;
-        hookDebugState.__bcr[1] = 0x1e5;
-        thread_set_state(thread, ARM_DEBUG_STATE64, (thread_state_t)&hookDebugState, ARM_DEBUG_STATE64_COUNT);
+#if !TARGET_OS_SIMULATOR
+    const char *libsystem_darwinPath = "/usr/lib/system/libsystem_darwin.dylib";
+    mach_header_u *libsystem_darwinHeader = LCGetLoadedImageHeader(0, libsystem_darwinPath);
+    NSString *internalRelTypeName = @"_internal_release_type";
+    uint32_t *internalRelTypePtr = getCachedSymbol(internalRelTypeName, libsystem_darwinHeader);
+    if (!internalRelTypePtr) {
+        internalRelTypePtr = litehook_find_dsc_symbol(libsystem_darwinPath, internalRelTypeName.UTF8String);
+        uint64_t offset = (uint64_t)((void*)internalRelTypePtr - (void*)libsystem_darwinHeader);
+        saveCachedSymbol(internalRelTypeName, libsystem_darwinHeader, offset);
     }
-
+    
+    uint32_t orig = *internalRelTypePtr;
+    *internalRelTypePtr = 3;
+#endif
+    
+    // Bypass iOS 16's +[SpringBoardUI load] crash
+    Class xctest = objc_allocateClassPair(NSObject.class, "XCTestConfiguration", 0);
+    if (xctest) objc_registerClassPair(xctest);
+    
     block();
     
-    if(hasInternalContent) {
-        thread_set_state(thread, ARM_DEBUG_STATE64, (thread_state_t)&origHasInternalContentDebugState, ARM_DEBUG_STATE64_COUNT);
-        thread_swap_exception_ports(thread, hasInternalContentMask, hasInternalContentHandler, hasInternalContentBehavior, hasInternalContentFlavor, &hasInternalContentMask, &hasInternalContentMasksCnt, &hasInternalContentHandler, &hasInternalContentBehavior, &hasInternalContentFlavor);
-    }
+    if (xctest) objc_disposeClassPair(xctest);
+#if !TARGET_OS_SIMULATOR
+    *internalRelTypePtr = orig;
+#endif
 }
 
 kern_return_t catch_mach_exception_raise_state( mach_port_t exception_port, exception_type_t exception, const mach_exception_data_t code, mach_msg_type_number_t codeCnt, int *flavor, const thread_state_t old_state, mach_msg_type_number_t old_stateCnt, thread_state_t new_state, mach_msg_type_number_t *new_stateCnt) {
@@ -721,11 +711,6 @@ kern_return_t catch_mach_exception_raise_state( mach_port_t exception_port, exce
         // not sure if this offset will change again
         *(uint8_t *)(((void *)old->__x[8]) + 0xa0) = 0;
         arm_thread_state64_set_pc_presigned_fptr(*new, arm_thread_state64_get_lr_fptr(*old) ?: (void *)arm_thread_state64_get_lr(*old));
-        return KERN_SUCCESS;
-    } else if (pc == (uint64_t)hasInternalContent) {
-        *new = *old;
-        *new_stateCnt = old_stateCnt;
-        arm_thread_state64_set_pc_fptr(*new, hook_os_variant_has_internal_content);
         return KERN_SUCCESS;
     }
     NSLog(@"[DyldLVBypass] Unknown breakpoint at pc: %p", (void*)pc);

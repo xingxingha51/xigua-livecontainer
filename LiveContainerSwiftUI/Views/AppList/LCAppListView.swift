@@ -740,6 +740,7 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
             finalNewApp.doUseLCBundleId = appToReplace.appInfo.doUseLCBundleId
             finalNewApp.fixFilePickerNew = appToReplace.appInfo.fixFilePickerNew
             finalNewApp.fixLocalNotification = appToReplace.appInfo.fixLocalNotification
+            finalNewApp.fixBackgroundTaskIdentifiers = appToReplace.appInfo.fixBackgroundTaskIdentifiers
             finalNewApp.lastLaunched = appToReplace.appInfo.lastLaunched
             finalNewApp.jitLaunchScriptJs = appToReplace.appInfo.jitLaunchScriptJs
             finalNewApp.multitaskSpecified = appToReplace.appInfo.multitaskSpecified
@@ -1044,6 +1045,7 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
             } catch {
                 errorInfo = error.localizedDescription
                 errorShow = true
+                return
             }
         }
         

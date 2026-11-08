@@ -22,9 +22,9 @@ enum JITEnablerType : Int, CaseIterable, Identifiable {
     var displayName: String {
         switch self {
         case .StikJIT: "StikDebug"
-        case .StikJITLC: "StikDebug (Another LiveContainer)"
+        case .StikJITLC: "StikDebug (Another LiveContainer/Multitask)"
         case .StosDebug: "StosDebug"
-        case .StosDebugLC: "StosDebug (Another LiveContainer)"
+        case .StosDebugLC: "StosDebug (Another LiveContainer/Multitask)"
         case .SideStore: "SideStore"
         case .JITStreamerEBLegacy: "JitStreamer-EB (Relaunch)"
         case .SideJITServer: "SideJITServer/JITStreamer 2.0"
@@ -62,9 +62,7 @@ struct LCSettingsView: View {
     
     @AppStorage("LCLoadTweaksToSelf") var injectToLCItelf = false
     @AppStorage("LCIgnoreJITOnLaunch") var ignoreJITOnLaunch = false
-    #if is32BitSupported
-    @AppStorage("selected32BitLayer") var liveExec32Path : String = ""
-    #endif
+    @AppStorage("LCSelected32BitEmulator", store: LCUtils.appGroupUserDefault) var selected32BitEmulator : String = ""
     @AppStorage("LCKeepSelectedWhenQuit") var keepSelectedWhenQuit = false
     @AppStorage("LCWaitForDebugger") var waitForDebugger = false
     @AppStorage("LCSharePrivateDataWithLiveProcess") var sharePrivateDataWithLiveProcess = false
@@ -190,6 +188,17 @@ struct LCSettingsView: View {
                     Text("JIT")
                 } footer: {
                     Text("lc.settings.JitDesc".loc)
+                }
+                
+                Section {
+                    Picker(selection: $selected32BitEmulator) {
+                        ForEach(sharedModel.arm32EmuApps, id: \.self) { app in
+                            Text("lc.common.none".loc).tag("")
+                            Text(app.appInfo.displayName()).tag(app.appInfo.relativeBundlePath!)
+                        }
+                    } label: {
+                        Text("lc.settings.selected32BitEmulator".loc)
+                    }
                 }
                 
                 Section{
@@ -361,14 +370,6 @@ struct LCSettingsView: View {
                             Text("Show FLEX Overlay")
                         }
                         .disabled(NSClassFromString("FLEXManager") == nil)
-                        #if is32BitSupported
-                        HStack {
-                            Text("LiveExec32 .app path")
-                            Spacer()
-                            TextField("", text: $liveExec32Path)
-                                .multilineTextAlignment(.trailing)
-                        }
-                        #endif
                     } header: {
                         Text("Developer Settings")
                     } footer: {

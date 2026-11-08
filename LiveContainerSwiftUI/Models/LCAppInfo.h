@@ -35,6 +35,7 @@ typedef NS_ENUM(NSInteger, MultitaskSpecified){
 @property MultitaskSpecified multitaskSpecified;
 @property bool fixFilePickerNew;
 @property bool fixLocalNotification;
+@property bool fixBackgroundTaskIdentifiers;
 @property bool doUseLCBundleId;
 @property NSString* selectedLanguage;
 @property NSString* dataUUID;
@@ -44,12 +45,12 @@ typedef NS_ENUM(NSInteger, MultitaskSpecified){
 @property bool dontSign;
 @property bool spoofSDKVersion;
 @property (nonatomic, strong) NSString* jitLaunchScriptJs;
+@property (nonatomic, strong) NSString* selected32BitEmulator;
 @property NSDate* lastLaunched;
 @property NSDate* installationDate;
 @property NSString* remark;
-#if is32BitSupported
 @property bool is32bit;
-#endif
+@property(readonly) bool is32bitEmulator;
 @property UIColor* cachedColor;
 @property UIColor* cachedColorDark;
 @property UIImage* cachedIcon;

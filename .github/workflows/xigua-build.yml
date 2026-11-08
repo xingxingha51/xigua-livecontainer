@@ -18,7 +18,9 @@ concurrency:
 
 jobs:
   build:
-    runs-on: macos-26
+    # 上游 2026-11 起用 Xcode 27 构建("update sdk version"),跟着换。xcode-27 是
+    # GitHub 官方的 runner(公开预览),macos-26 镜像最高只到 Xcode 26.6。
+    runs-on: xcode-27
     permissions:
       contents: write
 
@@ -30,7 +32,9 @@ jobs:
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1.6.0
         with:
-          xcode-version: "26.4"
+          # 用 27.1 而不是上游的 27.2:27.2 在这个镜像上还是 RC,而 27.1 (27A9275)
+          # 跟本地验证用的版本一字不差 —— 本地编过的就是 CI 编出来的。
+          xcode-version: "27.1"
 
       - name: Install ldid
         run: brew install ldid
